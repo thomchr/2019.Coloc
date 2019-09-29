@@ -1,0 +1,157 @@
+# Here are scripts and info to make Figure 2 data
+
+#!usr/bin/python
+
+#this will create matrices of ChrBP x Traits for a bunch of GWAS, to be loaded into HyPrColoc for multitrait analysis
+#Need a matrix for beta effects, and another one for Std Errors
+
+
+##the command I used for training is python HyPrCOLOC.MakeMatrices.py TraitsDirectories.PltRBCWBC
+##the command to run this for all Astle SNPs is python HyPrCOLOC.MakeMatrices.py TraitsDirectories
+import sys
+import subprocess
+import pandas as pd
+import numpy as np
+import os
+import glob
+
+if len(sys.argv) != 3 :
+    print("\nUsage: python HyPrCOLOC.MakeMatrics.MarkerName.py <List of Heme Traits to Coloc (should be a list with Trait -tab- Directory.gz)> <SNP file
+ list *make sure the .py script has the correct columns noted*>\n\n Note that this makes a Chr:Pos for each snp rather than going by rsid\nThis is also 
+dependent on a shell script FixMatrices.sh \n\n")
+    exit()
+    
+traitsdirs = sys.argv[1] # eg /project/voight_ML/thomc/thomc_results/COLOC/TraitsDirectories.PltRBCWBC ###THIS IS WHERE I WILL SPECIFY ALL THE DIRECTORI
+ES ONCE PAST TESTING PHASE####
+snpfile = sys.argv[2]
+
+#subprocess.call("module load R", shell=True)
+
+###########################
+#this will make genome-wide Beta Effect matrix that needs to be parsed down to GWAS signal regions later
+############################
+if not os.path.isfile('BetaMatrix.Genome.csv'):
+    betas = pd.DataFrame(columns=['chr:pos', 'chr', 'pos'])
+    ses = pd.DataFrame(columns=['chr:pos', 'chr', 'pos'])
+    
+    td = open(traitsdirs)
+    for line in td:
+        line = line.strip()
+        sl = line.split('\t')
+        Trait = sl[0]
+        file = sl[1]
+        
+        if '.gz' in file:
+            f = pd.read_csv(file, compression='gzip', header=0, delim_whitespace=True)
+            f.columns = f.columns.str.lower()
+            print(Trait)
+            f.rename(columns={'hg19_pos':'pos', 'chromosome':'chr', 'position':'pos', 'bp':'pos', 'chrom':'chr', 'chromend':'pos'}, inplace=True)
+            f.rename(columns={'effect':'beta', 'or':'beta', 'bcac_gwas_all_beta':'beta', 'european_ancestry_beta_fix':'beta'}, inplace=True)
+            f.rename(columns={'stderr':'se', 'bcac_gwas_all_se':'se', 'european_ancestry_se_fix':'se'}, inplace=True)
+            #print(f.head())
+            f['chr:pos'] = f['chr'].astype(str) + ":" + f['pos'].astype(str)   #].apply(lambda x: ':'.join(x), axis=1) #f['chr'] + ":" + f['pos']   #f.a
+pply(lambda row: row.a + row.b, axis=1)
+            f = f.drop_duplicates(['chr:pos']) #default is to keep the 'first' duplicate. this is arbitrary here
+            
+            #####Make Beta matrix
+            b = f[['chr:pos', 'beta']].copy(deep=True)
+            b.rename(columns={'beta':Trait}, inplace=True)
+            print("Length of b index = "+str(len(b.index)))
+            if (len(betas.index) == 0): #this 'initializes' betas dataframe with all rows from first file
+                betas = f[['chr:pos', 'chr', 'pos']]
+            
+            betas = pd.merge(left=betas, right=b, on='chr:pos')
+            print("Length of betas = "+str(len(betas.index)))
+            
+            ######Make SE matrix
+            s = f[['chr:pos', 'se']].copy(deep=True)
+            s.rename(columns={'se':Trait}, inplace=True)
+            if (len(ses.index) == 0): #initializes dataframe if it's first feature
+                ses = f[['chr:pos', 'chr', 'pos']]
+            
+            ses = pd.merge(left=ses, right=s, on='chr:pos')
+            print("Length of ses index = "+str(len(ses.index)))
+            
+            export_csv = betas.to_csv(r'BetaMatrix.Genome.csv', index = False, header=True) #Don't forget to add '.csv' at the end of the path
+            print(betas.head())
+    
+            export_csv = ses.to_csv(r'SEsMatrix.Genome.csv', index = False, header=True) #Don't forget to add '.csv' at the end of the path
+            print(ses.head())
+
+        else:
+            f = pd.read_csv(file, header=0, delim_whitespace=True)
+            f.columns = f.columns.str.lower()
+            print(Trait)
+            f.rename(columns={'hg19_pos':'pos', 'chromosome':'chr', 'position':'pos', 'bp':'pos', 'chrom':'chr', 'chromend':'pos'}, inplace=True)
+            f.rename(columns={'effect':'beta', 'or':'beta', 'bcac_gwas_all_beta':'beta', 'european_ancestry_beta_fix':'beta'}, inplace=True)
+            f.rename(columns={'stderr':'se', 'bcac_gwas_all_se':'se', 'european_ancestry_se_fix':'se'}, inplace=True)
+
+            f['chr:pos'] = f['chr'].astype(str) + ":" + f['pos'].astype(str)   #].apply(lambda x: ':'.join(x), axis=1) #f['chr'] + ":" + f['pos']   #f.a
+pply(lambda row: row.a + row.b, axis=1)
+            f = f.drop_duplicates(['chr:pos']) #default is to keep the 'first' duplicate. this is arbitrary here
+            
+            #####Make Beta matrix
+            b = f[['chr:pos', 'beta']].copy(deep=True)
+            b.rename(columns={'beta':Trait}, inplace=True)
+            print("Length of b index = "+str(len(b.index)))
+            if (len(betas.index) == 0): #this 'initializes' betas dataframe with all rows from first file
+                betas = f[['chr:pos', 'chr', 'pos']]
+            
+            betas = pd.merge(left=betas, right=b, on='chr:pos')
+            print("Length of betas = "+str(len(betas.index)))
+            
+            ######Make SE matrix
+            s = f[['chr:pos', 'se']].copy(deep=True)
+            s.rename(columns={'se':Trait}, inplace=True)
+            if (len(ses.index) == 0): #initializes dataframe if it's first feature
+                ses = f[['chr:pos', 'chr', 'pos']]
+            
+            ses = pd.merge(left=ses, right=s, on='chr:pos')
+            print("Length of ses index = "+str(len(ses.index)))
+            
+            export_csv = betas.to_csv(r'BetaMatrix.Genome.csv', index = False, header=True) #Don't forget to add '.csv' at the end of the path
+            print(betas.head())
+    
+            export_csv = ses.to_csv(r'SEsMatrix.Genome.csv', index = False, header=True) #Don't forget to add '.csv' at the end of the path
+            print(ses.head())
+
+    td.close()
+
+    
+############################
+####Make a smaller subset of regions based on GWAS significant loci that is able to go into HyPrColoc
+
+betas = pd.read_csv('BetaMatrix.Genome.csv')
+betas.rename(columns = {'chr:pos':'SNP'}, inplace = True)
+
+ses = pd.read_csv('SEsMatrix.Genome.csv')
+ses.rename(columns = {'chr:pos':'SNP'}, inplace = True)
+
+with open("Output.HyPrColoc", "w") as f:
+    f.write("iteration\ttraits\tposterior_prob\tregional_prob\tcandidate_snp\tposterior_explained_by_snp\tdropped_trait\n")
+f.close()
+
+snps = open('NHGRIsnps.Jan2019')
+
+for line in open(snpfile):
+    sl = line.split('\t')
+    chrom = int(sl[0])
+    loc = int(sl[2])
+    ub = loc+250000
+    lb = loc-250000
+
+    subbetas = betas.loc[(betas['chr'] == chrom) & (betas['pos'] <= ub) & (betas['pos'] >= lb)]
+    BetaFile = open("sub.BetaMatrix.csv", 'w')
+    subbetas.to_csv(BetaFile, index=False, sep="\t")
+
+    subses = ses.loc[(ses['chr'] == chrom) & (ses['pos'] <= ub) & (ses['pos'] >= lb)]
+    SesFile = open("sub.SEsMatrix.csv", 'w')
+    subses.to_csv(SesFile, index=False, sep="\t")
+
+    BetaFile.close()
+    SesFile.close()
+
+    cmd = "Rscript HyPrCOLOC.Input.R"
+    subprocess.call(cmd, shell=True)
+
+exit()
