@@ -154,18 +154,296 @@ for line in open(snpfile):
     subprocess.call(cmd, shell=True)
 
 exit()
+=====================================================
 
 
+#!usr/bin/python
+
+#WordHeatMap.py by _CST_ 190702
+
+from io import StringIO
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import CountVectorizer
+import math
+import sys
+import subprocess
+
+if len(sys.argv) != 3 :
+    print("\nUsage: python WordHeatMap.py <Input file containing ONLY space-separated trait words> <Outfile with a row-normalized matrix with % colocalization>\n\nRemember to rm tmp.csv if you are doing this multiple times!!\n\
+n")
+    exit()
+    
+traits = sys.argv[1]
+outfile = sys.argv[2]
+
+#clean slate each time this runs
+subprocess.call("rm TraitsPerLine", shell=True) #so that it doesn't keep appending to same file each time when this is rerun
+subprocess.call("rm words.tmp.csv", shell=True)
+
+for f in open(traits, 'r'):
+    f = f.replace("\n","").split(" ")
+    ar = np.unique(f)
+    
+    ########### this prints out number of unique traits on each line to make histogram later
+    tn = len(ar)
+    out = open(r'TraitsPerLine', 'a')
+    out.write(str(tn)+"\n")
+    out.close()
+    ######################
+    
+    df = pd.DataFrame(ar)
+    df = df.T #transposed to 1 row
+    df.to_csv("words.tmp.csv", mode='a', sep=" ", header=None, index=None)
+    
+with open("words.tmp.csv", 'r') as f:
+    vectorizer = CountVectorizer()
+    df = vectorizer.fit_transform(f).toarray()
+    print(vectorizer.vocabulary_)
+    print(vectorizer.get_feature_names())
+    print(df.shape)
+    df_asint = df.astype(int)
+    coocc = df_asint.T.dot(df_asint)
+    print(coocc)
+    print(coocc.shape)
+    column_names = vectorizer.get_feature_names()
+    row_names = vectorizer.get_feature_names()
+    df = pd.DataFrame(coocc, columns=column_names, index=row_names)
+    
+    #Heme Traits reorganized for PPFC>0.7
+    df = df.reindex(['rdw', 'mchc', 'mcv', 'mch', 'pdw', 'mpv', 'pct', 'plt', 'hgb', 'hct', 'rbc', 'ret_p', 'ret', 'hlr_p', 'hlr', 'irf', 'baso_p_gran', 'baso_p', 'baso', 'eo_p_gran', 'eo_p', 'neut_p_gran', 'neut_p', 'lymph_p'
+, 'lymph', 'mono_p', 'gran_p_myeloid_wbc', 'mono', 'gran', 'neut_eo_sum', 'baso_neut_sum', 'neut', 'myeloid_wbc', 'wbc'])
+
+    #Heme reorganized for PPFC > 0.7
+    columnTitles = ['rdw', 'mchc', 'mcv', 'mch', 'pdw', 'mpv', 'pct', 'plt', 'hgb', 'hct', 'rbc', 'ret_p', 'ret', 'hlr_p', 'hlr', 'irf', 'baso_p_gran', 'baso_p', 'baso', 'eo_p_gran', 'eo_p', 'neut_p_gran', 'neut_p', 'lymph_p',
+ 'lymph', 'mono_p', 'gran_p_myeloid_wbc', 'mono', 'gran', 'neut_eo_sum', 'baso_neut_sum', 'neut', 'myeloid_wbc', 'wbc']
+ 
+    df = df.reindex(columns=columnTitles)
+    dfMax = df.max(axis=1)
+    df = df.divide(dfMax, axis=0)
+    df.to_csv(path_or_buf=outfile, sep="\t")
 
 
+##########################################################################
 # Fig. 1A
 
+library("ggplot2")
+library(gplots)
+library("reshape2")
+library(RColorBrewer)
+library("ape")
+
+#Identify data
+setwd("/project/voight_ML/thomc/thomc_results/HyPrCOLOC/190822.AstleTraits.HyPrColoc")
+d <- read.table(file="ColocMatrix.190822.Astle.ChrPos.minPPFC0.7.txt", header=TRUE)
 
 
-# Fig. 1B
+# heat map - https://stat.ethz.ch/R-manual/R-patched/library/stats/html/heatmap.html
+# transpose and make symmetrical : https://davetang.org/muse/2014/01/22/making-symmetric-matrices-in-r/
+m <- data.matrix(d) # labRow=rownames(d), labCol=colnames(d)) #Rowv=dendrogram
+# <- t(lower.tri(m))
+m[upper.tri(m)] <- NA 
+u <- t(m)
+m[upper.tri(m)] <- u[upper.tri(u)]
+print(dim(m))
+
+wbc <- c('wbc', 'lymph', 'lymph_p', 'myeloid_wbc', 'neut', 'neut_p', 'neut_p_gran', 'neut_eo_sum', 'baso_neut_sum', 'baso', 'baso_p', 'baso_p_gran', 'eo_p', 'eo_p_gran', 'gran', 'gran_p_myeloid_wbc', 'mono', 'mono_p')
+plt <- c('plt', 'pct', 'mpv', 'pdw')
+red <- c('rbc', 'hct', 'hgb', 'mch', 'mchc', 'mcv', 'hlr', 'hlr_p', 'irf', 'rdw', 'ret', 'ret_p')
+
+wbc_col=sample(c("gray"), length(wbc), replace = TRUE, prob = NULL)
+plt_col=sample(c("purple"), length(plt), replace = TRUE, prob = NULL)
+red_col=sample(c("red"), length(red), replace = TRUE, prob = NULL)
+
+# separate cluster and create dendrogram
+clust <- dist(as.matrix(d)) 
+hc <- hclust(clust, method = "complete" )
+dd <- as.dendrogram(hc)
+pdf("clusteringtrial.pdf", height=10, width=5)
+par(cex=0.7, mar=c(10,10,10,10))
+#reorder
+wts = matrix(nrow = 1, ncol = nrow(m))
+wts[1,] = 1
+wts[1,1] = 1000
+wts[1,6] = 900
+wts[1,19] = 200
+wts[1,31] = 1
+plot(reorder(dd, wts, agglo.FUN = mean), horiz=T, lwd = 2, main = "reordered")
+dev.off()
+
+#unrooted
+pdf("unrooted.pdf", width=10, height=10)
+phylo <- plot(as.phylo(hc), type = "fan", cex =1.5, tip.color = c(wbc_col,plt_col,red_col,cm_col,ai_col,psych_col,can_col)) #no.margin=TRUE
+dev.off()
+
+####################
+#plots
+#for heme traits
+
+# For TraitsPerLocus histogram
+p <- read.table(file="TraitsPerLine", header=F)
+pdf("TraitsPerLocus.pdf", height=10, width=5)
+ggplot(p, aes(x=factor(p$V1))) + geom_bar(fill='black') + theme_classic(base_size=24) + scale_x_discrete(limits=1:25, breaks=c(1,5,10,15,20,25)) + scale_y_continuous(expand = c(0, 0)) #, limits = c(0, 1000), breaks=c(0, 250, 50
+0, 750, 1000))
+dev.off()
 
 
 
-# Fig. 1C
+##########################################################################
+# Fig. 1B (continuation of above)
 
+
+pdf("190822.AstleTraits.minPPFC0.7.wCluster.pdf")
+dd <- as.dendrogram(reorder(dd, wts, agglo.FUN = mean), horiz=T)
+heatmap <- heatmap.2(m, dendrogram="none", Rowv=dd, Colv=rev(dd), col=brewer.pal(9, "YlOrRd"), scale="none", margins=c(5,5), ColSideColors=matrix(c(wbc_col,plt_col,red_col), nrow=1, ncol=ncol(m)), RowSideColors=matrix(c(wbc_col
+,plt_col,red_col), nrow=nrow(m), ncol=1), cexRow=1, offsetRow=0, offsetCol=0, trace='none', density.info=c("none"), key=FALSE) 
+dev.off()
+
+pdf("190822.AstleTraits.minPPFC0.7.pdf")
+heatmap <- heatmap.2(m, dendrogram="none", Rowv=FALSE, Colv=FALSE, col=brewer.pal(9, "YlOrRd"), scale="none", margins=c(10,10), ColSideColors=matrix(c(wbc_col,plt_col,red_col), nrow=1, ncol=ncol(m)), RowSideColors=matrix(c(wbc_
+col,plt_col,red_col), nrow=nrow(m), ncol=1), cexRow=0.5, cexCol=1, srtCol=90, offsetRow=-45, offsetCol=0, trace='none', density.info=c("none"), key=FALSE, symkey=FALSE, keysize=1, key.title="Overlap %", key.xlab="Overlap %") #,
+ RowSideColorsSize=2, ColSideColorsSize=2) #, lmat = lmat, lwid = lwid, lhei = lhei) 
+dev.off()
+
+pdf("legend.pdf")
+heatmap <- heatmap.2(m, dendrogram="none", Rowv=FALSE, Colv=FALSE, col=brewer.pal(9, "YlOrRd"), scale="none", margins=c(1,1), ColSideColors=matrix(c(wbc_col,plt_col,red_col), nrow=1, ncol=ncol(m)), RowSideColors=matrix(c(wbc_co
+l,plt_col,red_col), nrow=nrow(m), ncol=1), cexRow=0.5, cexCol=1, srtCol=90, offsetRow=-45, offsetCol=0, trace='none', density.info=c("none"), key=TRUE, symkey=FALSE, keysize=2, key.title="Overlap %", key.xlab="Overlap %") #, Ro
+wSideColorsSize=2, ColSideColorsSize=2) #, lmat = lmat, lwid = lwid, lhei = lhei) 
+
+legend('topright', legend=c("White cell","Platelet","Red cell"), fill=c("gray","purple","red"), border=FALSE, bty="n", y.intersp = 0.8, cex=1)
+dev.off()
+
+
+
+
+##########################################################################
+# Fig. 1C: Calculate LDSC scores, then coloc # assemble into xls and analyze by Prism
+
+#LDSC.R
+library(data.table)
+library(dplyr)
+library(GenomicRanges)
+#library(BuenColors)
+#library(diffloop)
+options(datatable.fread.input.cmd.message=FALSE) #suppresses warning message associated with fread (see https://cran.r-project.org/web/packages/data.table/news/news.html for details)
+
+setwd<-("/project/voight_datasets/annot/LDSC/")
+
+# Import LD Scores 
+ldscorefiles <- list.files("/project/voight_datasets/annot/LDSC/eur_w_ld_chr", pattern = "*.gz$", full.names = TRUE)
+print(ldscorefiles)
+
+ldsc_g <- lapply(ldscorefiles, function(file){
+  dt <- fread(paste0("zcat < ",file))
+  dt 
+}) %>% rbindlist() %>% as.data.frame() %>%
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE, seqnames.field = "CHR", start.field = "BP", end.field = "BP")
+
+
+# Import files
+narrowpeakfiles <- list.files("/project/voight_datasets/GWAS/12_haemgen/Astle_2016/", pattern = "*_ukbb_ukbil_meta.tsv.gz$", full.names = TRUE)
+list_np_g <- lapply(narrowpeakfiles, function(file){
+	  dg <- makeGRangesFromDataFrame(data.frame(fread(paste0("zcat < ",file), header = FALSE)), 
+                                 seqnames.field = "CHR", start.field = "POS", end.field = "POS") %>% rmchr()
+  dg 
+})
+
+names(list_np_g) <- gsub("_ukbb_ukbil_meta.tsv.gz", "", list.files("/project/voight_datasets/GWAS/12_haemgen/Astle_2016/", pattern = "*_ukbb_ukbil_meta.tsv.gz$"))
+
+# Extract cell-type specific LD scores
+lapply(1:length(list_np_g), function(i){
+  peaks <- list_np_g[[i]]
+  snpsidx <- findOverlaps(peaks, ldsc_g) %>% subjectHits() %>% unique()
+  ldscs <- mcols(ldsc_g)$L2[snpsidx]
+  df <- data.frame(celltype = names(list_np_g)[i], scores = ldscs)
+  return(df)
+}) %>% rbindlist() %>% as.data.frame() -> SNPs_LDscores_celltypes
+
+p1 <- ggplot(SNPs_LDscores_celltypes, aes(x = celltype, y = scores, fill = celltype)) +
+  geom_boxplot(outlier.colour=NA) + scale_fill_manual(values = ejc_color_maps) +
+  pretty_plot() +
+    theme(plot.subtitle = element_text(vjust = 1), 
+    plot.caption = element_text(vjust = 1), legend.position = "none",
+    axis.text.x = element_text(angle = 90)) +labs(x = NULL, y = "Variant-Level LD Scores", 
+    fill = "Cell Type") + scale_y_continuous(limits = c(-3, 80))
+ggsave(p1, file = "variantLevelLDscores.pdf")
+
+anova(lm(scores ~ as.factor(celltype), SNPs_LDscores_celltypes))
+
+
+
+###########
+#submitLDSC.py
+#!usr/bin/python
+import sys
+import subprocess
+import glob
+import pdb
+from itertools import combinations
+import os
+import pandas as pd
+import numpy as np
+import time
+
+if len(sys.argv) != 2 :
+        print("\n\nUsage: submitLDSC.py: python </path/to/submitLDSC.py> </path/to/TraitsDirectories, which is trait -t- directory>\n\nMight need to set environment? Look in Benchling LDSC\n\n")
+        exit()
+
+traits = sys.argv[1]
+
+
+try:
+        with open(traits, 'r') as td: 
+                
+                #Munge first, then run LDScore Regression
+                #for file in glob.glob(traits):
+                for line in td:
+                        sl = line.split('\t')
+                        file = sl[1].rstrip('\n')
+                        trait = sl[0]
+                        #print(file)
+                        #pdb.set_trace()
+                        if os.path.isfile(trait+".Munged.sumstats.gz"):
+                                print(trait+".Munged.sumstats.gz already exists")
+                                
+                        if not os.path.isfile(trait+".Munged.sumstats.gz"):
+                                base = "python /project/voight_ML/thomc/thomc_results/LDSC/ldsc/munge_sumstats.py --sumstats "+file +"  --merge-alleles /project/voight_selscan/ksiewert/Migraine_Project/LDScore/LDScoreData/w_hm3
+.snplist --out " + trait +".Munged"
+                                #print(base)
+                                subprocess.call(base, shell=True)
+                td.close()
+except IOError:
+        print("cannot open traits file")
+        exit()
+
+
+
+try:
+        with open(traits, 'r') as td: 
+                for (file1, file2) in combinations(td, 2):
+                        #print(file1+ file2)
+                        f1 = file1.split('\t')
+                        f2 = file2.split('\t')
+                        f1t = f1[0]
+                        f1d = f1[1]
+                        f2t = f2[0]
+                        f2d = f2[1]
+                        #print(f1t+" , "+f2t)
+                        #for file in glob.glob("./*Munged.sumstats.gz"):
+                        #Ctype = file.split(".")[1].replace("Munged","").replace("/","")
+                        if not os.path.isfile(f1t+"."+f2t+".ldscresults.log"):
+                                base = "bsub -o LDSCreg.out -e LDSCreg.err python /project/voight_ML/thomc/thomc_results/LDSC/ldsc/ldsc.py --rg " +f1t+ ".Munged.sumstats.gz," +f2t+ ".Munged.sumstats.gz --ref-ld-chr /project/voi
+ght_ML/thomc/thomc_results/LDSC/LDSC.Tutorial/eur_w_ld_chr/ --w-ld-chr /project/voight_ML/thomc/thomc_results/LDSC/LDSC.Tutorial/eur_w_ld_chr/ --out " +f1t+"."+f2t+".ldscresults"
+                                #print(base)
+                                subprocess.call(base, shell=True)
+                        
+except IOError:
+        print("cannot open traits file named: " + file1 + "  " + file2)
+        exit()
+
+
+#make.rg.dataframe.sh (END)
+awk '/^p1/ {getline; print $1"\t"$2"\t"$3}' *.ldscresults.log > LDSCresults
+#awk '/^p1/ {getline; print $1"\t"$2"\t"$3}' LDSCreg.out > LDSCresults
+sed -i 's/\.Munged\.sumstats\.gz//g' LDSCresults
 
